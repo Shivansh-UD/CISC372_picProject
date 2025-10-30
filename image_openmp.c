@@ -3,15 +3,14 @@
 #include <time.h>
 #include <string.h>
 #include "image.h"
+#include <omp.h>//header of the OpenMP
+
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
-
-#include <pthread.h> //added this header. The squiggly line error thing is not a error its just thereto be there :(. The program work correctly and functions the way it is supposed to.
-
 
 //An array of kernel matrices to be used for image convolution.  
 //The indexes of these match the enumeration from the header file. ie. algorithms[BLUR] returns the kernel corresponding to a box blur.
@@ -23,17 +22,6 @@ Matrix algorithms[]={
     {{-2,-1,0},{-1,1,1},{0,1,2}},
     {{0,0,0},{0,1,0},{0,0,0}}
 };
-
-
-//THIS IS THE INFORMATION EACH THREAD WILL HAVE/CARRY WHEN WORKING.
-typedef struct {
-    Image *srcImage;
-    Image *destImage;
-    Matrix algorithm;
-    int startRow;
-    int endRow;
-} ThreadData;
-
 
 
 //getPixelValue - Computes the value of a specific pixel on a specific channel using the selected convolution kernel
@@ -65,70 +53,25 @@ uint8_t getPixelValue(Image* srcImage,int x,int y,int bit,Matrix algorithm){
     return result;
 }
 
-
-//THIS HELPER FUNTION RUNS AS MANY TIMES AS THE NUMBER OF THREADS THERE ARE. (BELOW I DEFINED 8 THREADS SO IT WILL RUN 8 TIMES (LINE=102))
-//he start row and end row are used to basically assign each thread a pixels that it should deal with. It does this for each thread and for the whole image.
-
-void* threadConvolute(void* arg) {
-    ThreadData* data = (ThreadData*)arg;
-    Image* srcImage = data->srcImage;
-    Image* destImage = data->destImage;
-    Matrix algorithm;
-    memcpy(algorithm, data->algorithm, sizeof(Matrix));
-
-    printf("Thread %ld starting\n",
-           pthread_self(), data->startRow, data->endRow);
-
-    //This is the main loop where the actual works begin    
-    for (int row = data->startRow; row < data->endRow; row++) {
-        for (int pix = 0; pix < srcImage->width; pix++) {
-            for (int bit = 0; bit < srcImage->bpp; bit++) {
-                destImage->data[Index(pix, row, srcImage->width, bit, srcImage->bpp)] =
-                    getPixelValue(srcImage, pix, row, bit, algorithm);
-            }
-        }
-    }
-    //
-
-    printf("Thread %ld done.\n", pthread_self());
-    return NULL;
-}
-
-
-
-
 //convolute:  Applies a kernel matrix to an image
 //Parameters: srcImage: The image being convoluted
 //            destImage: A pointer to a  pre-allocated (including space for the pixel array) structure to receive the convoluted image.  It should be the same size as srcImage
 //            algorithm: The kernel matrix to use for the convolution
 //Returns: Nothing
-//HERE WE USE THE HELPER FUNCTION DEFINED ABOVE
 void convolute(Image* srcImage, Image* destImage, Matrix algorithm) {
-    int num_threads = 8;  // NUMBER OF THREADS WE ARE USING. FOR NOW ITS SET TO 8.
-    pthread_t threads[num_threads];
-    ThreadData threadData[num_threads];
+    int row, pix, bit, span;
+    span = srcImage->bpp * srcImage->bpp;
 
-    int rows_per_thread = srcImage->height / num_threads;
-
-    for (int i = 0; i < num_threads; i++) {
-        threadData[i].srcImage = srcImage;
-        threadData[i].destImage = destImage;
-
-        memcpy(threadData[i].algorithm, algorithm, sizeof(Matrix));
-
-        threadData[i].startRow = i * rows_per_thread;
-        threadData[i].endRow = (i == num_threads - 1)
-            ? srcImage->height
-            : (i + 1) * rows_per_thread;
-
-        pthread_create(&threads[i], NULL, threadConvolute, &threadData[i]);
-    }
-
-    for (int i = 0; i < num_threads; i++) {
-        pthread_join(threads[i], NULL);
+    #pragma omp parallel for private(pix, bit) shared(srcImage, destImage, algorithm) //implimenting OpenMP from here
+    for (row = 0; row < srcImage->height; row++) {
+        for (pix = 0; pix < srcImage->width; pix++) {
+            for (bit = 0; bit < srcImage->bpp; bit++) {
+                destImage->data[Index(pix, row, srcImage->width, bit, srcImage->bpp)] =
+                    getPixelValue(srcImage, pix, row, bit, algorithm);
+            }
+        }
     }
 }
-
 
 
 //Usage: Prints usage information for the program
@@ -153,8 +96,8 @@ enum KernelTypes GetKernelType(char* type){
 //main:
 //argv is expected to take 2 arguments.  First is the source file name (can be jpg, png, bmp, tga).  Second is the lower case name of the algorithm.
 int main(int argc,char** argv){
-    long t1,t2;
-    t1=time(NULL);
+    double t1,t2;
+    
 
     stbi_set_flip_vertically_on_load(0); 
     if (argc!=3) return Usage();
@@ -174,12 +117,22 @@ int main(int argc,char** argv){
     destImage.height=srcImage.height;
     destImage.width=srcImage.width;
     destImage.data=malloc(sizeof(uint8_t)*destImage.width*destImage.bpp*destImage.height);
+    //Here we are figuring out how much threads OPENMP is using to solve the issue here and we are printing it out in the console.
+    int threads = omp_get_max_threads();
+    printf("Running with %d threads.\n", threads);
+    //
+    
+    //Here we are timing the overall process and how much time it is taking to apply the filter on the image
+    t1=omp_get_wtime();
     convolute(&srcImage,&destImage,algorithms[type]);
+    t2=omp_get_wtime();
+    //
+
+    printf("Took %f seconds\n",t2-t1); //chenged this to get decimal timing rather than whole number
     stbi_write_png("output.png",destImage.width,destImage.height,destImage.bpp,destImage.data,destImage.bpp*destImage.width);
     stbi_image_free(srcImage.data);
     
     free(destImage.data);
-    t2=time(NULL);
-    printf("Took %ld seconds\n",t2-t1);
+    
    return 0;
 }
