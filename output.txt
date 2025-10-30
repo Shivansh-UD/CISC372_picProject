@@ -1,0 +1,27 @@
+Script started on Wed Oct 29 21:38:52 2025
+]0;shivansh@r1n08.darwin:~/CISC372_picProject[?1034h[shivansh@r1n08 CISC372_picProject]$ export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+]0;shivansh@r1n08.darwin:~/CISC372_picProject[shivansh@r1n08 CISC372_picProject]$ ./image_openmp pic1.jpg edge
+Running with 4 threads.
+Took 0.280359 seconds
+]0;shivansh@r1n08.darwin:~/CISC372_picProject[shivansh@r1n08 CISC372_picProject]$ ./image_pthread pic1.jpg edge
+Thread 47693921208064 starting
+Thread 47693925410560 starting
+Thread 47693917005568 starting
+Thread 47693919106816 starting
+Thread 47693923309312 starting
+Thread 47693927511808 starting
+Thread 47693929613056 starting
+Thread 47693931714304 starting
+Thread 47693925410560 done.
+Thread 47693917005568 done.
+Thread 47693931714304 done.
+Thread 47693927511808 done.
+Thread 47693929613056 done.
+Thread 47693921208064 done.
+Thread 47693923309312 done.
+Thread 47693919106816 done.
+Took 6 seconds
+]0;shivansh@r1n08.darwin:~/CISC372_picProject[shivansh@r1n08 CISC372_picProject]$ exit
+exit
+
+Script done on Wed Oct 29 21:42:11 2025
